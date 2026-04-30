@@ -1,5 +1,10 @@
 # Hermes Doctor
 
+<p align="center">
+  <img src="banner.jpg" alt="Hermes Doctor — Health Check CLI for Personal AI Agents" width="880">
+</p>
+
+
 **Unofficial read-only companion tool for [Hermes Agent](https://hermes-agent.nousresearch.com/).**
 
 Hermes Doctor scans long-running Hermes Agent setups for hygiene issues: bloated memories, stale skills, reminder/cron drift, oversized sessions, broken local Markdown links, and runtime warnings — **without modifying anything**.
