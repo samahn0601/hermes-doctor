@@ -24,9 +24,9 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USER/hermes-doctor"
-Repository = "https://github.com/YOUR_USER/hermes-doctor"
-Issues = "https://github.com/YOUR_USER/hermes-doctor/issues"
+Homepage = "https://github.com/samahn0601/hermes-doctor"
+Repository = "https://github.com/samahn0601/hermes-doctor"
+Issues = "https://github.com/samahn0601/hermes-doctor/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.8"]

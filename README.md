@@ -57,7 +57,7 @@ Reports redact paths, secret-like strings, and identifier-like strings on a best
 ## Install from source
 
 ```bash
-git clone https://github.com/YOUR_USER/hermes-doctor.git
+git clone https://github.com/samahn0601/hermes-doctor.git
 cd hermes-doctor
 python -m pip install -e .
 ```
