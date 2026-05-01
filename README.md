@@ -4,16 +4,28 @@
   <img src="banner.jpg" alt="Hermes Doctor — Health Check CLI for Personal AI Agents" width="880">
 </p>
 
+> **Linters check your code. Hermes Doctor checks your agent's mind.**
 
-**Unofficial read-only companion tool for [Hermes Agent](https://hermes-agent.nousresearch.com/).**
+A local, read-only annual physical for a long-lived personal [Hermes Agent](https://hermes-agent.nousresearch.com/) installation.
 
-Hermes Doctor scans long-running Hermes Agent setups for hygiene issues: bloated memories, stale skills, reminder/cron drift, oversized sessions, broken local Markdown links, and runtime warnings — **without modifying anything**.
+Hermes Doctor scans bloated memories, stale skills, reminder/cron drift, oversized sessions, broken local Markdown links, and runtime warnings — **without modifying anything**.
 
 Hermes gets better as it remembers. But long-lived personal agents also accumulate entropy.
 
-It started as a family physician’s tool for treating a different kind of patient: my personal AI agent.
+It started as a family physician's tool for treating a different kind of patient: my personal AI agent. Designed by someone who thinks in preventive checkups, not emergency surgery.
 
 > Early public preview. Useful, small, and intentionally conservative.
+
+## Non-goals
+
+Hermes Doctor is deliberately small. The following are **not** going to happen:
+
+- ❌ No `--fix` mode, ever. The doctor writes the prescription; you go to the pharmacy.
+- ❌ No cloud service, dashboard, or telemetry. Reports are local-only.
+- ❌ No automatic memory deduplication, skill rewriting, or cron reconciliation.
+- ❌ No support for other agent frameworks (AutoGPT, LangChain, etc.) until Hermes itself is stable.
+- ❌ No generic Markdown linting — there are better tools for that.
+- ❌ No runtime dependencies in the core scanner. Stdlib only.
 
 ## Who is this for?
 
@@ -59,13 +71,29 @@ Reports redact paths, secret-like strings, and identifier-like strings on a best
 - `--debug-raw` is for local debugging only and should not be used for public reports.
 - Redaction is best-effort, not a formal secret-scanning guarantee.
 
-## Install from source
+## Install
+
+Recommended (zero-install, ephemeral):
+
+```bash
+pipx run hermes-doctor --summary
+```
+
+Persistent install:
+
+```bash
+pipx install hermes-doctor
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/samahn0601/hermes-doctor.git
 cd hermes-doctor
 python -m pip install -e .
 ```
+
+> PyPI publication arrives with v0.2. Until then, install from source.
 
 ## Usage
 
@@ -155,10 +183,10 @@ python -m ruff check .
 
 ## Roadmap
 
-- v0.1: read-only scanner
-- v0.2: more fixture-based analyzers and redaction tests
-- v0.3: dry-run repair suggestions, still no silent mutation
-- future: optional support for other long-running personal agent homes
+- **v0.1** — read-only scanner *(current)*
+- **v0.2** — golden fixture corpus + adversarial redaction tests + stable finding IDs (`HD-MEM-001`, `HD-CRON-002`) + analyzer status reporting + PyPI publication
+- **v0.3** — dry-run "review candidates" suggestions, conditional on v0.2 trust. Never executable scripts. Still no silent mutation.
+- **v1.0+** — boring, trusted, intentionally feature-frozen. Wins by credibility and restraint, not feature volume.
 
 ## License
 
