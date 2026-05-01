@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-01
+
+### Fixed
+- **Severity-label mismatch**: a Hermes home with multiple `critical` findings could still be labelled `healthy` (e.g. 5 criticals → 87/100 healthy). The top-line label and severity counts now cannot disagree:
+  - `critical >= 1` blocks the `healthy` label.
+  - `critical >= 3` forces `unhealthy`.
+  - `warning >= 5` blocks the `healthy` label.
+- Per-finding penalties strengthened (`warning` 2 → 5, `critical` 8 → 20) so domain scores reflect severity proportionally.
+
+### Added
+- `tests/test_label_invariants.py` — direct invariants on `health_status_label` independent of fixtures.
+- README badges (PyPI version, supported Python versions, license, CI status).
+- GitHub repo description and topics for discoverability.
+
 ## [0.2.0] - 2026-05-01
 
 ### Added
