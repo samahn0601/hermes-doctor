@@ -1,0 +1,10 @@
+Hermes Health: 95/100 (healthy)
+Findings: critical=0 warning=4 info=0
+Domains: markdown=94, memory_skills=98, reminder_cron=100, session_context=100, runtime_gateway=100
+Reminder/Cron: ids=['r_0001']
+Runtime: errors=0 warnings=0
+Actionable:
+- [warning] Broken Markdown link (md.broken_link): <HERMES_HOME> -> (does_not_exist.md)
+- [warning] Markdown file size warning (md.size): <HERMES_HOME> size=65KB
+- [warning] Estimated tokens warning (md.tokens): <HERMES_HOME> tokens≈16640
+- [warning] Memory/skill size warning (memory.size): <HERMES_HOME> size=65KB

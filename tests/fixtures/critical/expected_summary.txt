@@ -1,0 +1,11 @@
+Hermes Health: 87/100 (healthy)
+Findings: critical=5 warning=0 info=0
+Domains: markdown=84, memory_skills=92, reminder_cron=84, session_context=100, runtime_gateway=100
+Reminder/Cron: ids=['r_0001', 'r_0099']
+Runtime: errors=0 warnings=0
+Actionable:
+- [critical] Large Markdown file (md.size): <HERMES_HOME> size=220KB
+- [critical] Estimated tokens high (md.tokens): <HERMES_HOME> tokens≈56320
+- [critical] Memory/skill file too large (memory.size): <HERMES_HOME> size=220KB
+- [critical] Active reminder missing cron job (reminder.cron_missing): r_0099
+- [critical] Reminder and cron next-run mismatch (reminder.cron_time_mismatch): r_0001 ssot=2099-01-01 09:00 cron_next=<TIMESTAMP>
