@@ -154,9 +154,14 @@ Actionable: none
 
 ```text
 Actionable:
-- [warning] Memory/skill size warning (memory.size): <HERMES_HOME>/memories/notes.md size=84KB
-- [critical] Active reminder missing cron job (reminder.cron_missing): r_0007
+- [HD-MEM-002 warning] Memory/skill size warning: <HERMES_HOME>/memories/notes.md size=84KB
+- [HD-RMD-005 critical] Active reminder missing cron job: r_0007
 ```
+
+Each finding carries a **stable ID** (`HD-MD-…`, `HD-MEM-…`, `HD-RMD-…`,
+`HD-SES-…`, `HD-RT-…`) — safe to grep for, pin in CI, and reference in
+issues. The complete list lives in `FINDING_IDS` in
+[`src/hermes_doctor/cli.py`](src/hermes_doctor/cli.py).
 
 Hermes Doctor does not fix these automatically. It tells you what to inspect before you change state.
 
@@ -193,6 +198,20 @@ python -m ruff check .
 - **v0.2** — golden fixture corpus + adversarial redaction tests + stable finding IDs (`HD-MEM-001`, `HD-CRON-002`) + analyzer status reporting + PyPI publication
 - **v0.3** — dry-run "review candidates" suggestions, conditional on v0.2 trust. Never executable scripts. Still no silent mutation.
 - **v1.0+** — boring, trusted, intentionally feature-frozen. Wins by credibility and restraint, not feature volume.
+
+## Reporting issues safely
+
+Before opening an issue, please read **[SECURITY.md](SECURITY.md)** — it
+explains what redaction is and is not guaranteed, and how to share a
+report without leaking secrets.
+
+For private vulnerability reports (e.g. suspected redaction leak), open a
+[GitHub security advisory](https://github.com/samahn0601/hermes-doctor/security/advisories/new) instead of a public issue.
+
+## Contributing
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)**. The project is intentionally
+narrow — please skim the [Non-goals](#non-goals) section first.
 
 ## License
 

@@ -4,8 +4,8 @@ Domains: markdown=60, memory_skills=80, reminder_cron=60, session_context=100, r
 Reminder/Cron: ids=['r_0001', 'r_0099']
 Runtime: errors=0 warnings=0
 Actionable:
-- [critical] Large Markdown file (md.size): <HERMES_HOME> size=220KB
-- [critical] Estimated tokens high (md.tokens): <HERMES_HOME> tokens≈56320
-- [critical] Memory/skill file too large (memory.size): <HERMES_HOME> size=220KB
-- [critical] Active reminder missing cron job (reminder.cron_missing): r_0099
-- [critical] Reminder and cron next-run mismatch (reminder.cron_time_mismatch): r_0001 ssot=2099-01-01 09:00 cron_next=<TIMESTAMP>
+- [HD-MD-001 critical] Large Markdown file: <HERMES_HOME> size=220KB
+- [HD-MD-003 critical] Estimated tokens high: <HERMES_HOME> tokens≈56320
+- [HD-MEM-002 critical] Memory/skill file too large: <HERMES_HOME> size=220KB
+- [HD-RMD-005 critical] Active reminder missing cron job: r_0099
+- [HD-RMD-004 critical] Reminder and cron next-run mismatch: r_0001 ssot=2099-01-01 09:00 cron_next=<TIMESTAMP>

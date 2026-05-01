@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-01
+
+### Added
+- **Stable finding IDs**. Every finding now carries a fixed `HD-…` identifier (`HD-MD-001` through `HD-RT-006`) plus a `confidence` rating (`high`/`medium`/`low`). Safe to grep, pin in CI scripts, and reference in issues. See `FINDING_IDS` and `FINDING_CONFIDENCE` in `src/hermes_doctor/cli.py`. Coverage is enforced by `tests/test_finding_ids.py` — every code emitted by the scanner is required to have a stable ID and a confidence rating.
+- **Adversarial redaction corpus** (`tests/test_redaction_adversarial.py`). 32 cases covering OpenAI / Google / NVIDIA / GitHub PAT / Slack / Telegram bot tokens, JWTs, `Bearer …`, generic `key=value` secret assignments, emails, phone numbers (incl. Korean format), Telegram-style chat IDs, macOS / Linux / Windows home paths, and Korean folder names under `$HOME`. One synthetic case per shape; no real credentials.
+- **SECURITY.md** with safe-reporting guidance (do not paste raw memory / skills / cron commands; redact paths and identifiers; never share `--debug-raw` output publicly) and an explicit threat model.
+- **CONTRIBUTING.md** with explicit out-of-scope items, in-scope contributions we welcome, and a PR checklist.
+- **GitHub issue template** (`.github/ISSUE_TEMPLATE/bug_report.md`) leading with a SECURITY.md reminder; private security advisory link in `config.yml`.
+
+### Changed
+- Summary output now leads each actionable finding with its stable ID:
+  `- [HD-MD-001 warning] Markdown file size warning: <HERMES_HOME> size=65KB`
+- Markdown report adds `confidence` per finding:
+  `1. [HD-MD-001] [WARNING] Markdown file size warning (confidence=high)`
+- Phone-number redaction tightened to a digit-group shape (`\d{2,4}-\d{3,4}-\d{3,4}`-style) so ISO dates like `2099-01-01` are no longer mistakenly redacted.
+- Inner identifier-redaction threshold lowered from 6 to 4 consecutive digits so 4-digit phone segments cannot leak through.
+
 ## [0.2.1] - 2026-05-01
 
 ### Fixed
