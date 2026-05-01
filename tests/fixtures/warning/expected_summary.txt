@@ -4,7 +4,7 @@ Domains: markdown=85, memory_skills=95, reminder_cron=100, session_context=100, 
 Reminder/Cron: ids=['r_0001']
 Runtime: errors=0 warnings=0
 Actionable:
-- [warning] Broken Markdown link (md.broken_link): <HERMES_HOME> -> (does_not_exist.md)
-- [warning] Markdown file size warning (md.size): <HERMES_HOME> size=65KB
-- [warning] Estimated tokens warning (md.tokens): <HERMES_HOME> tokens≈16640
-- [warning] Memory/skill size warning (memory.size): <HERMES_HOME> size=65KB
+- [HD-MD-005 warning] Broken Markdown link: <HERMES_HOME> -> (does_not_exist.md)
+- [HD-MD-001 warning] Markdown file size warning: <HERMES_HOME> size=65KB
+- [HD-MD-003 warning] Estimated tokens warning: <HERMES_HOME> tokens≈16640
+- [HD-MEM-002 warning] Memory/skill size warning: <HERMES_HOME> size=65KB

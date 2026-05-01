@@ -24,6 +24,71 @@ DOMAINS = [
 WARN_PENALTY = 5
 CRIT_PENALTY = 20
 
+# Stable finding IDs: short, greppable, never renumbered.
+# New codes append; deprecated codes stay reserved.
+FINDING_IDS: dict[str, str] = {
+    "md.size": "HD-MD-001",
+    "md.line_count": "HD-MD-002",
+    "md.tokens": "HD-MD-003",
+    "md.broken_wikilink": "HD-MD-004",
+    "md.broken_link": "HD-MD-005",
+    "memory.duplicate": "HD-MEM-001",
+    "memory.size": "HD-MEM-002",
+    "memory.project_fact": "HD-MEM-003",
+    "reminder.missing": "HD-RMD-001",
+    "reminder.duplicate_id": "HD-RMD-002",
+    "reminder.outside_active": "HD-RMD-003",
+    "reminder.cron_time_mismatch": "HD-RMD-004",
+    "reminder.cron_missing": "HD-RMD-005",
+    "reminder.cron_orphan": "HD-RMD-006",
+    "session.size": "HD-SES-001",
+    "gateway.errors": "HD-RT-001",
+    "gateway.warnings": "HD-RT-002",
+    "runtime.version": "HD-RT-003",
+    "runtime.status": "HD-RT-004",
+    "runtime.doctor": "HD-RT-005",
+    "runtime.cron": "HD-RT-006",
+}
+
+# Confidence reflects how reliably a heuristic maps to a real problem.
+# Low-confidence findings should imply a manual review action, not silent fixes.
+FINDING_CONFIDENCE: dict[str, str] = {
+    "md.size": "high",
+    "md.line_count": "high",
+    "md.tokens": "medium",
+    "md.broken_wikilink": "high",
+    "md.broken_link": "high",
+    "memory.duplicate": "high",
+    "memory.size": "high",
+    "memory.project_fact": "low",
+    "reminder.missing": "high",
+    "reminder.duplicate_id": "high",
+    "reminder.outside_active": "medium",
+    "reminder.cron_time_mismatch": "high",
+    "reminder.cron_missing": "high",
+    "reminder.cron_orphan": "high",
+    "session.size": "high",
+    "gateway.errors": "medium",
+    "gateway.warnings": "low",
+    "runtime.version": "high",
+    "runtime.status": "high",
+    "runtime.doctor": "high",
+    "runtime.cron": "high",
+}
+
+
+def stable_id_for(code: str) -> str:
+    """Return the stable HD-* ID for a finding code, or 'HD-UNKNOWN' if missing.
+
+    A missing entry is a bug, not silent behavior — a regression test guards
+    that every code in cli.py is mapped.
+    """
+    return FINDING_IDS.get(code, "HD-UNKNOWN")
+
+
+def confidence_for(code: str) -> str:
+    return FINDING_CONFIDENCE.get(code, "medium")
+
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_\-]{8,}"),
     re.compile(r"nvapi-[A-Za-z0-9_\-]{8,}"),
@@ -40,7 +105,7 @@ IDENTIFIER_PATTERNS = [
     re.compile(r"(?i)(telegram|chat|channel|thread|home)[^\n:]{0,30}:\s*-?\d{6,}"),
     re.compile(r"(?i)(chat_id|channel_id|thread_id|user_id)\s*[=:]\s*-?\d{6,}"),
     re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
-    re.compile(r"\+?\d[\d\-() ]{8,}\d"),
+    re.compile(r"(?:\+\d{1,3}[\s\-]?)?\(?\d{2,4}\)?[\s\-]\d{3,4}[\s\-]\d{3,4}"),
 ]
 
 
@@ -54,7 +119,10 @@ class Finding:
     suggestion: str
 
     def to_dict(self) -> dict[str, str]:
-        return asdict(self)
+        d = asdict(self)
+        d["id"] = stable_id_for(self.code)
+        d["confidence"] = confidence_for(self.code)
+        return d
 
 
 class Redactor:
@@ -76,7 +144,7 @@ class Redactor:
         for pat in SECRET_PATTERNS:
             out = pat.sub("<REDACTED_SECRET>", out)
         for pat in IDENTIFIER_PATTERNS:
-            out = pat.sub(lambda m: "<REDACTED_IDENTIFIER>" if "@" in m.group(0) else re.sub(r"-?\d{6,}", "<REDACTED_ID>", m.group(0)), out)
+            out = pat.sub(lambda m: "<REDACTED_IDENTIFIER>" if "@" in m.group(0) else re.sub(r"-?\d{4,}", "<REDACTED_ID>", m.group(0)), out)
         return out
 
 
@@ -442,7 +510,8 @@ def render_summary(scan: dict[str, Any], redactor: Redactor) -> str:
     if actionable:
         lines.append("Actionable:")
         for f in actionable[:5]:
-            lines.append(f"- [{f['severity']}] {f['title']} ({f['code']}): {f['evidence']}")
+            fid = f.get("id") or stable_id_for(f.get("code", ""))
+            lines.append(f"- [{fid} {f['severity']}] {f['title']}: {f['evidence']}")
     else:
         lines.append("Actionable: none")
     return redactor.redact("\n".join(lines))
@@ -470,7 +539,9 @@ def render_report(scan: dict[str, Any], redactor: Redactor) -> str:
     if not ordered:
         lines.append("- No findings above threshold.")
     for i, f in enumerate(ordered[:20], 1):
-        lines.append(f"{i}. [{f['severity'].upper()}] {f['title']} ({f['code']})")
+        fid = f.get("id") or stable_id_for(f.get("code", ""))
+        conf = f.get("confidence") or confidence_for(f.get("code", ""))
+        lines.append(f"{i}. [{fid}] [{f['severity'].upper()}] {f['title']} (confidence={conf})")
         lines.append(f"   - evidence: {f['evidence']}")
         lines.append(f"   - suggestion: {f['suggestion']}")
     lines += ["", "## Scanner Summary"]

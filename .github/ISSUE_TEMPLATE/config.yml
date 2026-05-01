@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security or privacy report
+    url: https://github.com/samahn0601/hermes-doctor/security/advisories/new
+    about: For sensitive issues (suspected redaction leak, vulnerability), file a private security advisory instead of a public issue.
