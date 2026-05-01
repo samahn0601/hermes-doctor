@@ -21,8 +21,8 @@ DOMAINS = [
     "session_context",
     "runtime_gateway",
 ]
-WARN_PENALTY = 2
-CRIT_PENALTY = 8
+WARN_PENALTY = 5
+CRIT_PENALTY = 20
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_\-]{8,}"),
@@ -406,8 +406,17 @@ def score_findings(findings: list[dict[str, Any]]) -> dict[str, Any]:
     return {"overall": int(0.4 * mean + 0.6 * min_score), "domains": domains}
 
 
-def health_status_label(score: int) -> str:
-    return "healthy" if score >= 85 else "needs attention" if score >= 70 else "unhealthy"
+def health_status_label(score: int, critical: int = 0, warning: int = 0) -> str:
+    """A doctor that lists organ failure cannot also write 'healthy' on the chart.
+
+    Critical and warning counts override the score-based label so the top-line
+    cannot disagree with the severity tally. See score_findings for the score.
+    """
+    if critical >= 3 or score < 70:
+        return "unhealthy"
+    if critical >= 1 or warning >= 5 or score < 85:
+        return "needs attention"
+    return "healthy"
 
 
 def public_scan(scan: dict[str, Any]) -> dict[str, Any]:
@@ -423,7 +432,7 @@ def render_summary(scan: dict[str, Any], redactor: Redactor) -> str:
     counts = severity_counts(scan["findings"])
     domains = ", ".join(f"{k}={v}" for k, v in scores["domains"].items())
     lines = [
-        f"Hermes Health: {scores['overall']}/100 ({health_status_label(scores['overall'])})",
+        f"Hermes Health: {scores['overall']}/100 ({health_status_label(scores['overall'], counts['critical'], counts['warning'])})",
         f"Findings: critical={counts['critical']} warning={counts['warning']} info={counts['info']}",
         f"Domains: {domains}",
         f"Reminder/Cron: ids={scan.get('reminder_cron', {}).get('reminder_ids', [])}",
@@ -442,6 +451,7 @@ def render_summary(scan: dict[str, Any], redactor: Redactor) -> str:
 def render_report(scan: dict[str, Any], redactor: Redactor) -> str:
     scan = public_scan(scan)
     scores = scan["scores"]
+    counts = severity_counts(scan["findings"])
     ordered = sorted_findings(scan["findings"])
     lines = [
         "# Hermes Doctor Health Report",
@@ -449,7 +459,7 @@ def render_report(scan: dict[str, Any], redactor: Redactor) -> str:
         "## Overall",
         f"- generated_at: {scan['generated_at']}",
         f"- score: {scores['overall']} / 100",
-        f"- status: {health_status_label(scores['overall'])}",
+        f"- status: {health_status_label(scores['overall'], counts['critical'], counts['warning'])}",
         f"- findings: {len(scan['findings'])}",
         "",
         "## Domain Scores",

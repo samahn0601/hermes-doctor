@@ -4,6 +4,13 @@
   <img src="banner.jpg" alt="Hermes Doctor — Health Check CLI for Personal AI Agents" width="880">
 </p>
 
+<p align="center">
+  <a href="https://pypi.org/project/hermes-doctor/"><img alt="PyPI" src="https://img.shields.io/pypi/v/hermes-doctor.svg"></a>
+  <a href="https://pypi.org/project/hermes-doctor/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/hermes-doctor.svg"></a>
+  <a href="https://github.com/samahn0601/hermes-doctor/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/hermes-doctor.svg"></a>
+  <a href="https://github.com/samahn0601/hermes-doctor/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/samahn0601/hermes-doctor/actions/workflows/ci.yml/badge.svg"></a>
+</p>
+
 > **Linters check your code. Hermes Doctor checks your agent's mind.**
 
 A local, read-only annual physical for a long-lived personal [Hermes Agent](https://hermes-agent.nousresearch.com/) installation.

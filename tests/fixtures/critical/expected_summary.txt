@@ -1,6 +1,6 @@
-Hermes Health: 87/100 (healthy)
+Hermes Health: 68/100 (unhealthy)
 Findings: critical=5 warning=0 info=0
-Domains: markdown=84, memory_skills=92, reminder_cron=84, session_context=100, runtime_gateway=100
+Domains: markdown=60, memory_skills=80, reminder_cron=60, session_context=100, runtime_gateway=100
 Reminder/Cron: ids=['r_0001', 'r_0099']
 Runtime: errors=0 warnings=0
 Actionable:
