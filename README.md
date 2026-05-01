@@ -93,7 +93,6 @@ cd hermes-doctor
 python -m pip install -e .
 ```
 
-> PyPI publication arrives with v0.2. Until then, install from source.
 
 ## Usage
 

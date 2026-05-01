@@ -6,11 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-01
+
 ### Added
 - Golden fixture corpus under `tests/fixtures/` covering healthy, warning, and critical Hermes home states.
 - Snapshot-based regression tests (`tests/test_snapshots.py`) using stdlib-only normalization. Freezes the public summary contract before adding new analyzers.
 - `Non-goals` section in README to make the safety boundary explicit and discourage scope creep.
 - PyPI Trusted Publishing release workflow at `.github/workflows/release.yml`. Publishes on tag `v*`.
+- First PyPI publication. `pipx install hermes-doctor` and `pipx run hermes-doctor` now work.
 
 ### Changed
 - README headline reframed as a one-line positioning statement: *Linters check your code. Hermes Doctor checks your agent's mind.*
