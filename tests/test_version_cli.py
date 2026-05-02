@@ -1,5 +1,5 @@
 from pathlib import Path
-import tomllib
+import re
 
 import pytest
 
@@ -11,8 +11,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_package_version_matches_pyproject():
-    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert hermes_doctor.__version__ == pyproject["project"]["version"]
+    text = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"$', text, re.MULTILINE)
+    assert match, "pyproject.toml must declare project.version"
+    assert hermes_doctor.__version__ == match.group(1)
 
 
 def test_version_flag_prints_package_version_without_scanning(capsys, monkeypatch):
