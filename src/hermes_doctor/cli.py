@@ -5,14 +5,18 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.metadata as metadata
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+from hermes_doctor import __version__
 
 DOMAINS = [
     "markdown",
@@ -23,6 +27,31 @@ DOMAINS = [
 ]
 WARN_PENALTY = 5
 CRIT_PENALTY = 20
+
+
+def installed_metadata_version() -> str:
+    """Return the version installed in the active Python environment."""
+    try:
+        return metadata.version("hermes-doctor")
+    except metadata.PackageNotFoundError:
+        return "not-installed"
+
+
+def render_self_check() -> tuple[str, bool]:
+    """Render a local install sanity check without scanning Hermes state."""
+    metadata_version = installed_metadata_version()
+    consistent = metadata_version == __version__
+    lines = [
+        "Hermes Doctor self-check",
+        f"package_version: {__version__}",
+        f"metadata_version: {metadata_version}",
+        f"version_consistent: {str(consistent).lower()}",
+        f"python: {sys.executable}",
+        f"module_file: {Path(__file__).resolve()}",
+    ]
+    if not consistent:
+        lines.append("suggestion: reinstall or upgrade hermes-doctor in the active environment")
+    return "\n".join(lines), consistent
 
 # Stable finding IDs: short, greppable, never renumbered.
 # New codes append; deprecated codes stay reserved.
@@ -619,6 +648,8 @@ def exit_code_for(scan: dict[str, Any], fail_on: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Hermes Doctor: read-only health scanner for Hermes Agent")
+    ap.add_argument("--version", action="version", version=f"hermes-doctor {__version__}")
+    ap.add_argument("--self-check", action="store_true", help="Print package/install diagnostics without scanning Hermes state")
     ap.add_argument("--hermes-home", default=str(Path.home() / ".hermes"))
     ap.add_argument("--include", action="append", default=[], help="Additional Markdown path to scan (opt-in; repeatable)")
     ap.add_argument("--include-project-hub", action="store_true", help="Opt-in scan of ~/projects-hub")
@@ -628,6 +659,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fail-on", choices=["never", "critical", "warning"], default="never", help="Exit 2 if findings meet threshold")
     ap.add_argument("--debug-raw", action="store_true", help="Include redacted raw command output in JSON/report; local debugging only")
     args = ap.parse_args(argv)
+    if args.self_check:
+        text, consistent = render_self_check()
+        print(text)
+        return 0 if consistent else 1
     hermes_home = Path(args.hermes_home).expanduser()
     redactor = Redactor(Path.home(), hermes_home)
     scan = build_scan(hermes_home, [Path(p) for p in args.include], args.include_project_hub, args.debug_raw)

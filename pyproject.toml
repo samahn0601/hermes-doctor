@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-doctor"
-version = "0.3.0"
+version = "0.3.1"
 description = "Read-only health scanner for long-running Hermes Agent setups"
 readme = "README.md"
 requires-python = ">=3.10"
