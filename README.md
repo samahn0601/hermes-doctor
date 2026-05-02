@@ -118,6 +118,12 @@ hermes-doctor --write-report
 
 # Automation gate: exit 2 on critical findings
 hermes-doctor --summary --fail-on critical
+
+# Print the package version without scanning local state
+hermes-doctor --version
+
+# Diagnose stale installs / active-environment version mismatches
+hermes-doctor --self-check
 ```
 
 By default, Hermes Doctor scans only the Hermes home directory:
@@ -194,9 +200,11 @@ python -m ruff check .
 
 ## Roadmap
 
-- **v0.1** — read-only scanner *(current)*
-- **v0.2** — golden fixture corpus + adversarial redaction tests + stable finding IDs (`HD-MEM-001`, `HD-CRON-002`) + analyzer status reporting + PyPI publication
-- **v0.3** — dry-run "review candidates" suggestions, conditional on v0.2 trust. Never executable scripts. Still no silent mutation.
+- **v0.1** — initial read-only scanner
+- **v0.2** — golden fixture corpus, score invariants, PyPI publication
+- **v0.3** — stable finding IDs, confidence ratings, adversarial redaction corpus, security/contribution docs
+- **v0.3.1** — install sanity checks: `--version`, `--self-check`, source/metadata version guard *(current)*
+- **v0.4** — dry-run "review candidates" suggestions. Never executable scripts. Still no silent mutation.
 - **v1.0+** — boring, trusted, intentionally feature-frozen. Wins by credibility and restraint, not feature volume.
 
 ## Reporting issues safely

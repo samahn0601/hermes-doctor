@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-03
+
+### Added
+- `--version` prints the source package version without scanning Hermes state.
+- `--self-check` reports the active Python executable, module path, source package version, and installed package metadata version. It exits `1` when the active environment is importing a different version than the installed metadata, making stale editable installs and venv/user-local conflicts visible.
+
+### Changed
+- Source package version is now kept in sync with `pyproject.toml` and guarded by `tests/test_version_cli.py`.
+
 ## [0.3.0] - 2026-05-01
 
 ### Added
