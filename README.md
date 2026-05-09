@@ -17,6 +17,8 @@ A local, read-only annual physical for a long-lived personal [Hermes Agent](http
 
 Hermes Doctor scans bloated memories, stale skills, reminder/cron drift, oversized sessions, broken local Markdown links, and runtime warnings — **without modifying anything**.
 
+As of v0.4, it also includes a conservative Hermes update pre-flight check: upstream-behind count, local repository changes, known Telegram timeout-patch signatures, UTF-8 BOM risks, and skill `platforms:` frontmatter hygiene.
+
 Hermes gets better as it remembers. But long-lived personal agents also accumulate entropy.
 
 It started as a family physician's tool for treating a different kind of patient: my personal AI agent. Designed by someone who thinks in preventive checkups, not emergency surgery.
@@ -51,6 +53,8 @@ Hermes Doctor is for people who run Hermes Agent as a long-lived personal agent 
 - `REMINDERS.md` vs `hermes cron list` consistency
 - Session file size
 - Recent runtime / gateway warning and error event counts
+- Hermes update readiness: upstream-behind count, local changes, Telegram timeout patch signature, UTF-8 BOM risks
+- Skill `platforms:` frontmatter drift, including the folded-description regression pattern
 - Domain scores and overall health score
 
 ## Safety model
@@ -124,6 +128,12 @@ hermes-doctor --version
 
 # Diagnose stale installs / active-environment version mismatches
 hermes-doctor --self-check
+
+# Pre-flight before updating Hermes itself
+hermes-doctor --summary --fail-on critical
+
+# Stricter pre-flight gate for automation
+hermes-doctor --summary --fail-on warning
 ```
 
 By default, Hermes Doctor scans only the Hermes home directory:

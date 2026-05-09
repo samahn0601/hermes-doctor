@@ -77,6 +77,13 @@ FINDING_IDS: dict[str, str] = {
     "runtime.status": "HD-RT-004",
     "runtime.doctor": "HD-RT-005",
     "runtime.cron": "HD-RT-006",
+    "update.behind": "HD-UPD-001",
+    "update.local_changes": "HD-UPD-002",
+    "update.telegram_patch_present": "HD-UPD-003",
+    "update.telegram_patch_unrecognized": "HD-UPD-004",
+    "update.bom": "HD-UPD-005",
+    "memory.skill_platforms_folded": "HD-MEM-004",
+    "memory.skill_platforms_missing": "HD-MEM-005",
 }
 
 # Confidence reflects how reliably a heuristic maps to a real problem.
@@ -103,6 +110,13 @@ FINDING_CONFIDENCE: dict[str, str] = {
     "runtime.status": "high",
     "runtime.doctor": "high",
     "runtime.cron": "high",
+    "update.behind": "high",
+    "update.local_changes": "high",
+    "update.telegram_patch_present": "high",
+    "update.telegram_patch_unrecognized": "medium",
+    "update.bom": "high",
+    "memory.skill_platforms_folded": "high",
+    "memory.skill_platforms_missing": "medium",
 }
 
 
@@ -190,6 +204,44 @@ def safe_read_text(path: Path, max_bytes: int = 2_000_000) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
     except Exception as e:  # pragma: no cover - defensive guard
         return f"\n<!-- READ_ERROR: {type(e).__name__} -->\n"
+
+
+def has_utf8_bom(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(3) == b"\xef\xbb\xbf"
+    except OSError:
+        return False
+
+
+def extract_frontmatter(text: str) -> str | None:
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---", 4)
+    if end == -1:
+        return None
+    return text[4:end]
+
+
+def folded_description_contains_platforms(frontmatter: str) -> bool:
+    lines = frontmatter.splitlines()
+    in_description = False
+    description_indent = 0
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r"^description:\s*[>|]", line):
+            in_description = True
+            description_indent = len(line) - len(line.lstrip())
+            continue
+        if in_description:
+            indent = len(line) - len(line.lstrip())
+            if stripped and indent <= description_indent and re.match(r"^[A-Za-z0-9_-]+:\s*", stripped):
+                in_description = False
+            elif re.match(r"^platforms:\s*", stripped):
+                return True
+        if re.match(r"^platforms:\s*", line):
+            in_description = False
+    return False
 
 
 def strip_markdown_code(text: str) -> str:
@@ -300,6 +352,7 @@ class MemorySkillsAnalyzer:
             if root.exists():
                 targets.extend(root.rglob("*.md"))
         seen: dict[str, Path] = {}
+        missing_platforms: list[str] = []
         for p in sorted(targets):
             if p.name == "REMINDERS.md":
                 continue
@@ -321,6 +374,16 @@ class MemorySkillsAnalyzer:
                 findings.append(Finding(sev, "memory_skills", "memory.size", "Memory/skill size warning", f"{rel} size={size//1024}KB", "Check load frequency.").to_dict())
             if "/memories/" in str(p) and not p.name.startswith("project_") and is_project_fact_candidate(text):
                 findings.append(Finding("warning", "memory_skills", "memory.project_fact", "Project fact candidate in general memory", rel, "Move mutable project facts to an SSoT file if applicable.").to_dict())
+            if "/skills/" in str(p):
+                frontmatter = extract_frontmatter(text)
+                if frontmatter:
+                    if folded_description_contains_platforms(frontmatter):
+                        findings.append(Finding("warning", "memory_skills", "memory.skill_platforms_folded", "Skill platforms key appears inside folded description", rel, "Move platforms: to a top-level frontmatter key.").to_dict())
+                    elif not re.search(r"(?m)^platforms:\s*", frontmatter):
+                        missing_platforms.append(rel)
+        if missing_platforms:
+            examples = ", ".join(missing_platforms[:5])
+            findings.append(Finding("info", "memory_skills", "memory.skill_platforms_missing", "Skill frontmatter lacks platforms key", f"count={len(missing_platforms)} examples={examples}", "Consider declaring supported platforms when updating these skills.").to_dict())
         return {"files_scanned": len(targets), "findings": findings}
 
 
@@ -463,6 +526,93 @@ class RuntimeAnalyzer:
         return result
 
 
+class UpdateReadinessAnalyzer:
+    def __init__(self, hermes_home: Path, redactor: Redactor):
+        self.hermes_home = hermes_home
+        self.redactor = redactor
+        self.repo = hermes_home / "hermes-agent"
+
+    def _git(self, args: list[str], timeout: int = 20) -> tuple[int, str]:
+        return run_cmd(["git", "-C", str(self.repo), *args], timeout=timeout)
+
+    def _local_changes(self) -> list[str]:
+        code, out = self._git(["status", "--short"])
+        if code != 0:
+            return []
+        changes: list[str] = []
+        for line in out.splitlines():
+            path = line[3:].strip() if len(line) > 3 else line.strip()
+            if path:
+                changes.append(path)
+        return changes
+
+    def _behind_count(self) -> int | None:
+        code, out = self._git(["rev-list", "--count", "HEAD..@{u}"])
+        if code != 0:
+            return None
+        try:
+            return int(out.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            return None
+
+    def _telegram_patch_status(self, local_changes: list[str]) -> str:
+        telegram = self.repo / "gateway" / "platforms" / "telegram.py"
+        if not telegram.exists():
+            return "not_found"
+        text = safe_read_text(telegram, max_bytes=500_000)
+        has_signature = bool(re.search(r"_is_connect_timeout", text) and re.search(r"ConnectTimeout", text))
+        if has_signature:
+            return "present"
+        modified = any(change.endswith("gateway/platforms/telegram.py") or "gateway/platforms/telegram.py" in change for change in local_changes)
+        return "unrecognized_local_edit" if modified else "absent"
+
+    def _bom_files(self) -> list[Path]:
+        candidates = [
+            self.hermes_home / "SOUL.md",
+            self.hermes_home / "config.yaml",
+            self.hermes_home / "memories" / "REMINDERS.md",
+        ]
+        profiles = self.hermes_home / "profiles"
+        if profiles.exists():
+            candidates.extend(profiles.rglob("distribution.yaml"))
+        return [p for p in candidates if p.exists() and has_utf8_bom(p)]
+
+    def scan(self) -> dict[str, Any]:
+        findings: list[dict[str, str]] = []
+        repo_available = False
+        behind_count: int | None = None
+        local_changes: list[str] = []
+        telegram_status = "not_checked"
+        if self.repo.exists():
+            code, _out = self._git(["rev-parse", "--is-inside-work-tree"])
+            repo_available = code == 0
+        if repo_available:
+            behind_count = self._behind_count()
+            local_changes = self._local_changes()
+            telegram_status = self._telegram_patch_status(local_changes)
+            if behind_count and behind_count > 0:
+                findings.append(Finding("warning", "update_readiness", "update.behind", "Hermes upstream has newer commits", f"behind_count={behind_count}", "Run git fetch for freshness, then review upstream changes and local patches before updating.").to_dict())
+            if local_changes:
+                evidence = ", ".join(self.redactor.redact(change) for change in local_changes[:5])
+                findings.append(Finding("warning", "update_readiness", "update.local_changes", "Hermes repository has local changes", evidence, "Inspect local changes before running an update.").to_dict())
+            if telegram_status == "present":
+                findings.append(Finding("info", "update_readiness", "update.telegram_patch_present", "Telegram ConnectTimeout patch signature present", "gateway/platforms/telegram.py", "Preserve or re-check this local patch during Hermes updates.").to_dict())
+            elif telegram_status == "unrecognized_local_edit":
+                findings.append(Finding("warning", "update_readiness", "update.telegram_patch_unrecognized", "Telegram integration locally modified but timeout patch signature not recognized", "gateway/platforms/telegram.py", "Inspect the file before updating; Hermes Doctor will not auto-merge patches.").to_dict())
+        bom_files = self._bom_files()
+        for p in bom_files:
+            findings.append(Finding("warning", "update_readiness", "update.bom", "UTF-8 BOM found in Hermes state file", self.redactor.redact(str(p)), "Remove the BOM if the target parser is sensitive to it.").to_dict())
+        return {
+            "repo": self.redactor.redact(str(self.repo)) if self.repo.exists() else None,
+            "repo_available": repo_available,
+            "behind_count": behind_count,
+            "local_changes": local_changes,
+            "telegram_timeout_patch": telegram_status,
+            "bom_files": [self.redactor.redact(str(p)) for p in bom_files],
+            "findings": findings,
+        }
+
+
 class SessionAnalyzer:
     def __init__(self, hermes_home: Path, redactor: Redactor):
         self.hermes_home = hermes_home
@@ -574,7 +724,7 @@ def render_report(scan: dict[str, Any], redactor: Redactor) -> str:
         lines.append(f"   - evidence: {f['evidence']}")
         lines.append(f"   - suggestion: {f['suggestion']}")
     lines += ["", "## Scanner Summary"]
-    for key in ["markdown", "memory_skills", "reminder_cron", "session_context", "runtime_gateway"]:
+    for key in ["markdown", "memory_skills", "reminder_cron", "session_context", "runtime_gateway", "update_readiness"]:
         val = scan.get(key, {})
         compact = {k: v for k, v in val.items() if k not in {"findings", "raw_outputs"}}
         lines.append(f"- {key}: `{json.dumps(compact, ensure_ascii=False)}`")
@@ -603,8 +753,9 @@ def build_scan(hermes_home: Path, include_paths: list[Path] | None = None, inclu
     runtime = RuntimeAnalyzer(hermes_home, redactor, include_raw=debug_raw).scan()
     reminder = ReminderCronChecker(hermes_home / "memories" / "REMINDERS.md", runtime.get("cron_text_for_internal_use", ""), redactor).scan()
     session = SessionAnalyzer(hermes_home, redactor).scan()
+    update_readiness = UpdateReadinessAnalyzer(hermes_home, redactor).scan()
     findings: list[dict[str, Any]] = []
-    for part in [markdown, memory_skills, runtime, reminder, session]:
+    for part in [markdown, memory_skills, runtime, reminder, session, update_readiness]:
         findings.extend(part.get("findings", []))
     return {
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -613,6 +764,7 @@ def build_scan(hermes_home: Path, include_paths: list[Path] | None = None, inclu
         "runtime_gateway": runtime,
         "reminder_cron": reminder,
         "session_context": session,
+        "update_readiness": update_readiness,
         "findings": findings,
         "scores": score_findings(findings),
     }
