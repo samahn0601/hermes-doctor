@@ -54,7 +54,8 @@ def test_update_readiness_notes_telegram_timeout_patch_signature(tmp_path, monke
     repo = home / "hermes-agent"
     (repo / "gateway" / "platforms").mkdir(parents=True)
     (repo / "gateway" / "platforms" / "telegram.py").write_text(
-        "import httpx\n\ndef _is_connect_timeout(exc):\n    return isinstance(exc, httpx.ConnectTimeout)\n",
+        "import httpx\n\ndef _is_connect_timeout(exc):\n    return isinstance(exc, httpx.ConnectTimeout)\n"
+        "retryable = _is_connect_timeout(exc)\n",
         encoding="utf-8",
     )
 
@@ -68,6 +69,36 @@ def test_update_readiness_notes_telegram_timeout_patch_signature(tmp_path, monke
                 return 0, "0\n"
             if args[3:] == ["status", "--short"]:
                 return 0, ""
+        return 0, ""
+
+    monkeypatch.setattr("hermes_doctor.cli.run_cmd", fake_run_cmd)
+    scan = build_scan(home)
+
+    assert scan["update_readiness"]["telegram_timeout_patch"] == "present"
+    assert any(f["code"] == "update.telegram_patch_present" and f["severity"] == "info" for f in scan["findings"])
+
+
+def test_update_readiness_recognizes_current_looks_like_connect_timeout_patch(tmp_path, monkeypatch):
+    home = make_home(tmp_path)
+    repo = home / "hermes-agent"
+    (repo / "gateway" / "platforms").mkdir(parents=True)
+    (repo / "gateway" / "platforms" / "telegram.py").write_text(
+        "def _looks_like_connect_timeout(error):\n"
+        "    return 'connect timed out' in str(error).lower() or 'ConnectTimeout' in repr(error)\n"
+        "retryable = is_connect_timeout or not is_timeout\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_cmd(args, timeout=20):
+        if args[:3] == ["hermes", "cron", "list"]:
+            return 0, "Name: r_0001_test\nNext run: 2099-01-01T09:00:00+09:00\n"
+        if args[:3] == ["git", "-C", str(repo)]:
+            if args[3:] == ["rev-parse", "--is-inside-work-tree"]:
+                return 0, "true\n"
+            if args[3:] == ["rev-list", "--count", "HEAD..@{u}"]:
+                return 0, "0\n"
+            if args[3:] == ["status", "--short"]:
+                return 0, " M gateway/platforms/telegram.py\n"
         return 0, ""
 
     monkeypatch.setattr("hermes_doctor.cli.run_cmd", fake_run_cmd)
@@ -113,6 +144,17 @@ def test_update_readiness_flags_utf8_bom_in_core_files(tmp_path, monkeypatch):
 
     assert scan["update_readiness"]["bom_files"]
     assert sum(1 for f in scan["findings"] if f["code"] == "update.bom") == 2
+
+
+def test_update_readiness_flags_tirith_fail_open(tmp_path, monkeypatch):
+    home = make_home(tmp_path)
+    (home / "config.yaml").write_text("security:\n  tirith_fail_open: true\n", encoding="utf-8")
+
+    monkeypatch.setattr("hermes_doctor.cli.run_cmd", lambda args, timeout=20: (127, "command not found: hermes"))
+    scan = build_scan(home)
+
+    assert scan["update_readiness"]["tirith_fail_open"] is True
+    assert any(f["code"] == "update.tirith_fail_open" and f["severity"] == "critical" for f in scan["findings"])
 
 
 def test_memory_skills_flags_platforms_inside_folded_description(tmp_path):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-doctor"
-version = "0.4.0"
+version = "0.4.1"
 description = "Read-only health scanner for long-running Hermes Agent setups"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,7 +21,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
-dependencies = []
+dependencies = ["PyYAML>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/samahn0601/hermes-doctor"

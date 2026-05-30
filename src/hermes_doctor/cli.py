@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+import yaml
 from hermes_doctor import __version__
 
 DOMAINS = [
@@ -24,6 +25,7 @@ DOMAINS = [
     "reminder_cron",
     "session_context",
     "runtime_gateway",
+    "file_state",
 ]
 WARN_PENALTY = 5
 CRIT_PENALTY = 20
@@ -71,6 +73,7 @@ FINDING_IDS: dict[str, str] = {
     "reminder.cron_missing": "HD-RMD-005",
     "reminder.cron_orphan": "HD-RMD-006",
     "session.size": "HD-SES-001",
+    "session.static_context_bloat": "HD-SES-002",
     "gateway.errors": "HD-RT-001",
     "gateway.warnings": "HD-RT-002",
     "runtime.version": "HD-RT-003",
@@ -82,6 +85,9 @@ FINDING_IDS: dict[str, str] = {
     "update.telegram_patch_present": "HD-UPD-003",
     "update.telegram_patch_unrecognized": "HD-UPD-004",
     "update.bom": "HD-UPD-005",
+    "update.tirith_fail_open": "HD-UPD-006",
+    "state.conflict_file": "HD-ST-001",
+    "state.stale_lock": "HD-ST-002",
     "memory.skill_platforms_folded": "HD-MEM-004",
     "memory.skill_platforms_missing": "HD-MEM-005",
 }
@@ -104,6 +110,7 @@ FINDING_CONFIDENCE: dict[str, str] = {
     "reminder.cron_missing": "high",
     "reminder.cron_orphan": "high",
     "session.size": "high",
+    "session.static_context_bloat": "medium",
     "gateway.errors": "medium",
     "gateway.warnings": "low",
     "runtime.version": "high",
@@ -115,6 +122,9 @@ FINDING_CONFIDENCE: dict[str, str] = {
     "update.telegram_patch_present": "high",
     "update.telegram_patch_unrecognized": "medium",
     "update.bom": "high",
+    "update.tirith_fail_open": "high",
+    "state.conflict_file": "high",
+    "state.stale_lock": "high",
     "memory.skill_platforms_folded": "high",
     "memory.skill_platforms_missing": "medium",
 }
@@ -252,7 +262,12 @@ def strip_markdown_code(text: str) -> str:
 def is_project_fact_candidate(text: str) -> bool:
     progress = re.compile(r"completed|done|phase\s*\d+|완료|진행", re.I)
     projectish = re.compile(r"project|status\.md|decisions\.md|프로젝트", re.I)
-    stable_context = re.compile(r"trigger|reference|principle|location|structure|SSoT|preference|rule|트리거|참조|원칙|위치|구조|선호|규칙", re.I)
+    stable_context = re.compile(
+        r"\b(?:trigger|reference|principle|location|structure|SSoT|preference|rule|"
+        r"setup|install|installed|helper|environment|patch|workflow)\b|"
+        r"트리거|참조|원칙|위치|구조|선호|규칙|설치|환경|패치|워크플로우",
+        re.I,
+    )
     for line in text.splitlines():
         if not (progress.search(line) or projectish.search(line)):
             continue
@@ -324,6 +339,9 @@ class MarkdownAnalyzer:
                 findings.append(Finding(sev_warn, "markdown", "md.tokens", "Estimated tokens warning", f"{rel} tokens≈{tokens}", "Consider a summary file.").to_dict())
             link_text = strip_markdown_code(text)
             for wikilink in re.findall(r"\[\[([^\]]+)\]\]", link_text):
+                target_name = wikilink.split("#", 1)[0].split("|", 1)[0].strip().lower()
+                if target_name in {"page-a", "page-b", "page-c", "example-page"}:
+                    continue
                 if not self._resolve_wikilink(wikilink, all_stems, p.parent):
                     sev = "info" if is_skill_reference else "critical" if p.name.upper() == "INDEX.md" else "warning"
                     findings.append(Finding(sev, "markdown", "md.broken_wikilink", "Broken wikilink", f"{rel} -> [[{wikilink}]]", "Check target note exists.").to_dict())
@@ -420,8 +438,58 @@ class ReminderCronChecker:
             m = re.search(r"Next run:\s+([^\s]+)", line)
             if m and current:
                 runs[current] = m.group(1)
-                current = None
         return runs
+
+    def _cron_last_runs(self) -> dict[str, str]:
+        runs: dict[str, str] = {}
+        current: str | None = None
+        for line in self.cron_text.splitlines():
+            m = re.search(r"Name:\s+.*?(r_\d{4})(?!\d)", line)
+            if m:
+                current = m.group(1)
+                continue
+            m = re.search(r"Last run:\s+([^\s]+)", line)
+            if m and current:
+                runs[current] = m.group(1)
+        return runs
+
+    def _cron_repeats_forever(self) -> set[str]:
+        recurring: set[str] = set()
+        current: str | None = None
+        for line in self.cron_text.splitlines():
+            m = re.search(r"Name:\s+.*?(r_\d{4})(?!\d)", line)
+            if m:
+                current = m.group(1)
+                continue
+            if current and re.search(r"Repeat:\s*∞", line):
+                recurring.add(current)
+        return recurring
+
+    @staticmethod
+    def _parse_kst_reminder_time(date_s: str, time_s: str) -> dt.datetime | None:
+        try:
+            return dt.datetime.fromisoformat(f"{date_s}T{time_s}:00+09:00")
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_cron_iso_time(value: str) -> dt.datetime | None:
+        try:
+            parsed = dt.datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed
+
+    def _recurring_already_fired_from_ssot_date(self, rid: str, expected_at: dt.datetime, cron_last: dict[str, str], cron_recurring: set[str]) -> bool:
+        if rid not in cron_recurring:
+            return False
+        last_run = self._parse_cron_iso_time(cron_last.get(rid, ""))
+        if last_run is None:
+            return False
+        delta = abs(last_run.astimezone(expected_at.tzinfo) - expected_at)
+        return delta <= dt.timedelta(minutes=10)
 
     def scan(self) -> dict[str, Any]:
         findings: list[dict[str, str]] = []
@@ -438,12 +506,20 @@ class ReminderCronChecker:
             if status == "" and section and "Active" not in section and "미완료" not in section:
                 findings.append(Finding("warning", "reminder_cron", "reminder.outside_active", "Unchecked reminder outside Active section", f"{rid} line={line_no}", "Check reminder SSoT structure.").to_dict())
         cron_next = self._cron_next_runs()
+        cron_last = self._cron_last_runs()
+        cron_recurring = self._cron_repeats_forever()
         for status, rid, line, _line_no, _section in entries:
             if status or rid not in cron_next:
                 continue
             m = re.search(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+KST", line)
-            if m and not cron_next[rid].startswith(f"{m.group(1)}T{m.group(2)}"):
-                findings.append(Finding("critical", "reminder_cron", "reminder.cron_time_mismatch", "Reminder and cron next-run mismatch", f"{rid} ssot={m.group(1)} {m.group(2)} cron_next={cron_next[rid]}", "Confirm intended notification time before changing anything.").to_dict())
+            if m:
+                expected = f"{m.group(1)}T{m.group(2)}"
+                expected_at = self._parse_kst_reminder_time(m.group(1), m.group(2))
+                recurring_already_fired_from_ssot_date = bool(
+                    expected_at and self._recurring_already_fired_from_ssot_date(rid, expected_at, cron_last, cron_recurring)
+                )
+                if not cron_next[rid].startswith(expected) and not recurring_already_fired_from_ssot_date:
+                    findings.append(Finding("critical", "reminder_cron", "reminder.cron_time_mismatch", "Reminder and cron next-run mismatch", f"{rid} ssot={m.group(1)} {m.group(2)} cron_next={cron_next[rid]}", "Confirm intended notification time before changing anything.").to_dict())
         for rid in sorted(active_ids - cron_ids):
             findings.append(Finding("critical", "reminder_cron", "reminder.cron_missing", "Active reminder missing cron job", rid, "Do not auto-repair; compare SSoT first.").to_dict())
         for cid in sorted(cron_ids - active_ids):
@@ -560,7 +636,10 @@ class UpdateReadinessAnalyzer:
         if not telegram.exists():
             return "not_found"
         text = safe_read_text(telegram, max_bytes=500_000)
-        has_signature = bool(re.search(r"_is_connect_timeout", text) and re.search(r"ConnectTimeout", text))
+        helper_signature = re.search(r"_(?:is|looks_like)_connect_timeout\b", text)
+        connect_timeout_signature = re.search(r"ConnectTimeout|connect timeout|connect timed out", text, re.I)
+        retry_safety_signature = re.search(r"retryable\s*=|not\s+self\._looks_like_connect_timeout|not\s+self\._is_connect_timeout", text)
+        has_signature = bool(helper_signature and connect_timeout_signature and retry_safety_signature)
         if has_signature:
             return "present"
         modified = any(change.endswith("gateway/platforms/telegram.py") or "gateway/platforms/telegram.py" in change for change in local_changes)
@@ -576,6 +655,19 @@ class UpdateReadinessAnalyzer:
         if profiles.exists():
             candidates.extend(profiles.rglob("distribution.yaml"))
         return [p for p in candidates if p.exists() and has_utf8_bom(p)]
+
+    def _tirith_fail_open(self) -> bool:
+        config = self.hermes_home / "config.yaml"
+        if not config.exists():
+            return False
+        try:
+            data = yaml.safe_load(safe_read_text(config, max_bytes=500_000)) or {}
+        except yaml.YAMLError:
+            return False
+        if not isinstance(data, dict):
+            return False
+        security = data.get("security")
+        return isinstance(security, dict) and security.get("tirith_fail_open") is True
 
     def scan(self) -> dict[str, Any]:
         findings: list[dict[str, str]] = []
@@ -602,6 +694,9 @@ class UpdateReadinessAnalyzer:
         bom_files = self._bom_files()
         for p in bom_files:
             findings.append(Finding("warning", "update_readiness", "update.bom", "UTF-8 BOM found in Hermes state file", self.redactor.redact(str(p)), "Remove the BOM if the target parser is sensitive to it.").to_dict())
+        tirith_fail_open = self._tirith_fail_open()
+        if tirith_fail_open:
+            findings.append(Finding("critical", "update_readiness", "update.tirith_fail_open", "Security scanner is configured fail-open", "security.tirith_fail_open=true", "Set tirith_fail_open to false unless this is an intentional temporary emergency bypass.").to_dict())
         return {
             "repo": self.redactor.redact(str(self.repo)) if self.repo.exists() else None,
             "repo_available": repo_available,
@@ -609,14 +704,60 @@ class UpdateReadinessAnalyzer:
             "local_changes": local_changes,
             "telegram_timeout_patch": telegram_status,
             "bom_files": [self.redactor.redact(str(p)) for p in bom_files],
+            "tirith_fail_open": tirith_fail_open,
             "findings": findings,
         }
+
+
+class StateDriftAnalyzer:
+    def __init__(self, roots: Iterable[str | Path], redactor: Redactor):
+        self.roots = [Path(r).expanduser() for r in roots]
+        self.redactor = redactor
+
+    def scan(self) -> dict[str, Any]:
+        findings: list[dict[str, str]] = []
+        conflict_files: list[str] = []
+        stale_locks: list[str] = []
+        now = dt.datetime.now().timestamp()
+        skip_dirs = {"node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+        for root in self.roots:
+            if not root.exists():
+                continue
+            for dirpath, dirnames, filenames in os.walk(root):
+                dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+                current = Path(dirpath)
+                for name in filenames:
+                    p = current / name
+                    if ".conflict." in name and name.lower().endswith(".md"):
+                        conflict_files.append(self.redactor.redact(str(p)))
+                    if name == "index.lock" and current.name == ".git":
+                        try:
+                            age_seconds = now - p.stat().st_mtime
+                        except FileNotFoundError:
+                            continue
+                        if age_seconds > 3600:
+                            stale_locks.append(self.redactor.redact(str(p)))
+        if conflict_files:
+            findings.append(Finding("critical", "file_state", "state.conflict_file", "Conflict Markdown file present", f"count={len(conflict_files)} examples={', '.join(conflict_files[:3])}", "Do not read or merge automatically; ask the operator to choose keep, partial edit, or rollback.").to_dict())
+        if stale_locks:
+            findings.append(Finding("warning", "file_state", "state.stale_lock", "Stale git index.lock present", f"count={len(stale_locks)} examples={', '.join(stale_locks[:3])}", "Inspect the owning process before deleting any lock file.").to_dict())
+        return {"roots_scanned": len([r for r in self.roots if r.exists()]), "conflict_files": conflict_files, "stale_locks": stale_locks, "findings": findings}
 
 
 class SessionAnalyzer:
     def __init__(self, hermes_home: Path, redactor: Redactor):
         self.hermes_home = hermes_home
         self.redactor = redactor
+
+    def _static_context_files(self) -> list[Path]:
+        candidates = [
+            self.hermes_home / "SOUL.md",
+            self.hermes_home / "MEMORY.md",
+            self.hermes_home / "USER.md",
+            self.hermes_home / "memories" / "MEMORY.md",
+            self.hermes_home / "memories" / "USER.md",
+        ]
+        return [p for p in candidates if p.exists()]
 
     def scan(self) -> dict[str, Any]:
         findings: list[dict[str, str]] = []
@@ -629,12 +770,25 @@ class SessionAnalyzer:
                 findings.append(Finding("critical", "session_context", "session.size", "Session file too large", f"{rel} size={size//1024}KB", "Review session rotation/compression.").to_dict())
             elif size > 1 * 1024 * 1024:
                 findings.append(Finding("warning", "session_context", "session.size", "Session file size warning", f"{rel} size={size//1024}KB", "Check long-running or repeated context injection.").to_dict())
-        return {"session_files": len(files), "findings": findings}
+        static_files = self._static_context_files()
+        static_context_tokens = sum(estimate_tokens(safe_read_text(p, max_bytes=2_000_000)) for p in static_files)
+        if static_context_tokens > 80_000:
+            findings.append(Finding("critical", "session_context", "session.static_context_bloat", "Static context baseline is very large", f"tokens≈{static_context_tokens} files={len(static_files)}", "Externalize or split always-loaded persona/memory files before troubleshooting dynamic context.").to_dict())
+        elif static_context_tokens > 40_000:
+            findings.append(Finding("warning", "session_context", "session.static_context_bloat", "Static context baseline is large", f"tokens≈{static_context_tokens} files={len(static_files)}", "Review always-loaded persona/memory files before changing compression settings.").to_dict())
+        return {"session_files": len(files), "static_context_files": len(static_files), "static_context_tokens": static_context_tokens, "findings": findings}
 
 
 def sorted_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     order = {"critical": 0, "warning": 1, "info": 2}
-    return sorted(findings, key=lambda f: (order.get(f.get("severity"), 9), f.get("domain", ""), f.get("code", "")))
+    return sorted(
+        findings,
+        key=lambda f: (
+            order.get(str(f.get("severity", "")), 9),
+            str(f.get("domain", "")),
+            str(f.get("code", "")),
+        ),
+    )
 
 
 def severity_counts(findings: list[dict[str, Any]]) -> dict[str, int]:
@@ -724,7 +878,7 @@ def render_report(scan: dict[str, Any], redactor: Redactor) -> str:
         lines.append(f"   - evidence: {f['evidence']}")
         lines.append(f"   - suggestion: {f['suggestion']}")
     lines += ["", "## Scanner Summary"]
-    for key in ["markdown", "memory_skills", "reminder_cron", "session_context", "runtime_gateway", "update_readiness"]:
+    for key in ["markdown", "memory_skills", "reminder_cron", "session_context", "runtime_gateway", "update_readiness", "file_state"]:
         val = scan.get(key, {})
         compact = {k: v for k, v in val.items() if k not in {"findings", "raw_outputs"}}
         lines.append(f"- {key}: `{json.dumps(compact, ensure_ascii=False)}`")
@@ -754,8 +908,9 @@ def build_scan(hermes_home: Path, include_paths: list[Path] | None = None, inclu
     reminder = ReminderCronChecker(hermes_home / "memories" / "REMINDERS.md", runtime.get("cron_text_for_internal_use", ""), redactor).scan()
     session = SessionAnalyzer(hermes_home, redactor).scan()
     update_readiness = UpdateReadinessAnalyzer(hermes_home, redactor).scan()
+    file_state = StateDriftAnalyzer(roots, redactor).scan()
     findings: list[dict[str, Any]] = []
-    for part in [markdown, memory_skills, runtime, reminder, session, update_readiness]:
+    for part in [markdown, memory_skills, runtime, reminder, session, update_readiness, file_state]:
         findings.extend(part.get("findings", []))
     return {
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -765,6 +920,7 @@ def build_scan(hermes_home: Path, include_paths: list[Path] | None = None, inclu
         "reminder_cron": reminder,
         "session_context": session,
         "update_readiness": update_readiness,
+        "file_state": file_state,
         "findings": findings,
         "scores": score_findings(findings),
     }

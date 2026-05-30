@@ -1,11 +1,17 @@
 from pathlib import Path
+import datetime as dt
 import json
+import os
 
 from hermes_doctor.cli import (
+    MarkdownAnalyzer,
     Redactor,
     ReminderCronChecker,
+    SessionAnalyzer,
+    StateDriftAnalyzer,
     build_scan,
     exit_code_for,
+    is_project_fact_candidate,
     public_scan,
     render_summary,
     write_report_files,
@@ -61,6 +67,118 @@ def test_reminder_cron_mismatch_is_critical(tmp_path):
     cron = "Name: r_0001_test\nNext run: 2099-01-01T10:00:00+09:00\n"
     result = ReminderCronChecker(home / "memories" / "REMINDERS.md", cron, Redactor(tmp_path, home)).scan()
     assert any(f["severity"] == "critical" and f["code"] == "reminder.cron_time_mismatch" for f in result["findings"])
+
+
+def test_recurring_reminder_already_fired_from_ssot_date_is_healthy(tmp_path):
+    home = make_home(tmp_path)
+    (home / "memories" / "REMINDERS.md").write_text(
+        "## Active\n"
+        "- [ ] 2026-05-11 09:00 KST | project=sera-gc | weekly check | id=r_0019\n",
+        encoding="utf-8",
+    )
+    cron = "\n".join(
+        [
+            "Name: r_0019_sera-gc",
+            "Schedule: 0 9 * * 1",
+            "Repeat: ∞",
+            "Next run: 2026-05-18T09:00:00+09:00",
+            "Last run: 2026-05-11T09:02:06.931824+09:00  ok",
+        ]
+    )
+    result = ReminderCronChecker(home / "memories" / "REMINDERS.md", cron, Redactor(tmp_path, home)).scan()
+    assert result["findings"] == []
+
+
+def test_recurring_reminder_last_run_timezone_equivalent_is_healthy(tmp_path):
+    home = make_home(tmp_path)
+    (home / "memories" / "REMINDERS.md").write_text(
+        "## Active\n"
+        "- [ ] 2026-05-11 09:00 KST | project=sera-gc | weekly check | id=r_0019\n",
+        encoding="utf-8",
+    )
+    cron = "\n".join(
+        [
+            "Name: r_0019_sera-gc",
+            "Schedule: 0 9 * * 1",
+            "Repeat: ∞",
+            "Next run: 2026-05-18T09:00:00+09:00",
+            "Last run: 2026-05-11T00:02:06+00:00  ok",
+        ]
+    )
+
+    result = ReminderCronChecker(home / "memories" / "REMINDERS.md", cron, Redactor(tmp_path, home)).scan()
+
+    assert result["findings"] == []
+
+
+def test_recurring_reminder_last_run_outside_tolerance_still_mismatches(tmp_path):
+    home = make_home(tmp_path)
+    (home / "memories" / "REMINDERS.md").write_text(
+        "## Active\n"
+        "- [ ] 2026-05-11 09:00 KST | project=sera-gc | weekly check | id=r_0019\n",
+        encoding="utf-8",
+    )
+    cron = "\n".join(
+        [
+            "Name: r_0019_sera-gc",
+            "Schedule: 0 9 * * 1",
+            "Repeat: ∞",
+            "Next run: 2026-05-18T09:00:00+09:00",
+            "Last run: 2026-05-11T01:30:00+00:00  ok",
+        ]
+    )
+
+    result = ReminderCronChecker(home / "memories" / "REMINDERS.md", cron, Redactor(tmp_path, home)).scan()
+
+    assert any(f["code"] == "reminder.cron_time_mismatch" for f in result["findings"])
+
+
+def test_memory_installed_helper_note_is_stable_context_not_project_fact():
+    text = "Mac mini K-skill: helper 복구와 설치·정리 완료, 환경 패치됨."
+    assert is_project_fact_candidate(text) is False
+
+
+def test_memory_installing_project_progress_is_not_masked_by_install_substring():
+    text = "Project phase 2 completed while installing dependencies."
+    assert is_project_fact_candidate(text) is True
+
+
+def test_placeholder_wikilinks_are_ignored(tmp_path):
+    root = tmp_path / "wiki"
+    root.mkdir()
+    (root / "SKILL.md").write_text('Example: "Based on [[page-a]] and [[page-b]]"\n', encoding="utf-8")
+    result = MarkdownAnalyzer([root], Redactor(tmp_path, tmp_path / ".hermes")).scan()
+    assert result["findings"] == []
+
+
+def test_session_analyzer_flags_static_context_bloat(tmp_path):
+    home = make_home(tmp_path)
+    (home / "SOUL.md").write_text("세라\n" + ("x" * 180_000), encoding="utf-8")
+    (home / "memories" / "USER.md").write_text("대표님\n" + ("y" * 20_000), encoding="utf-8")
+
+    result = SessionAnalyzer(home, Redactor(tmp_path, home)).scan()
+
+    assert result["static_context_tokens"] > 40_000
+    assert any(f["code"] == "session.static_context_bloat" and f["severity"] == "warning" for f in result["findings"])
+
+
+def test_state_drift_analyzer_flags_conflict_and_stale_lock_files(tmp_path):
+    root = tmp_path / "state"
+    root.mkdir()
+    conflict = root / "agenda.conflict.20260526.md"
+    conflict.write_text("do not read", encoding="utf-8")
+    git_dir = root / ".git"
+    git_dir.mkdir()
+    lock = git_dir / "index.lock"
+    lock.write_text("", encoding="utf-8")
+    old = dt.datetime.now().timestamp() - 7200
+    lock.touch()
+    os.utime(lock, (old, old))
+
+    result = StateDriftAnalyzer([root], Redactor(tmp_path, tmp_path / ".hermes")).scan()
+
+    codes = {f["code"] for f in result["findings"]}
+    assert codes == {"state.conflict_file", "state.stale_lock"}
 
 
 def test_summary_and_fail_on(tmp_path, monkeypatch):

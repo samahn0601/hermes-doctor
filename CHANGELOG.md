@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-30
+
+### Added
+- `file_state` domain flags Markdown conflict files and stale `.git/index.lock` files without reading or merging them.
+- Static context baseline sizing warns when always-loaded Hermes persona/memory files become large enough to distort session compression troubleshooting.
+- Update-readiness now detects `security.tirith_fail_open=true` as a critical fail-open configuration.
+
+### Fixed
+- Recurring reminder cron checks no longer flag a one-shot SSoT date as mismatched when the recurring job already fired at that date and now points to the next recurrence.
+- Current Telegram connect-timeout patch signatures are recognized even after the helper was renamed from `_is_connect_timeout` to `_looks_like_connect_timeout`.
+- Placeholder wikilinks in skill examples are ignored, and memory project-fact detection is less noisy for stable setup/install notes.
+
 ## [0.3.1] - 2026-05-03
 
 ### Added
